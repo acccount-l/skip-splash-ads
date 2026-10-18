@@ -56,4 +56,23 @@ class BoundsTest {
         assertFalse(Bounds.contains(listOf(0f, 0f, 1f, 1f), 0, 0, 0, 100))
         assertFalse(Bounds.contains(listOf(0f, 0f, 1f, 1f), 0, 0, 100, 0))
     }
+
+    @Test
+    fun `allows small drift from countdown relayout`() {
+        val snapshot = RectI(995, 121, 1210, 215)
+        assertTrue(Bounds.near(RectI(960, 121, 1175, 215), snapshot, 24, 0.35f))
+        assertTrue(Bounds.near(RectI(995, 118, 1210, 219), snapshot, 24, 0.35f))
+    }
+
+    @Test
+    fun `rejects large position change`() {
+        val snapshot = RectI(995, 121, 1210, 215)
+        assertFalse(Bounds.near(RectI(600, 121, 815, 215), snapshot, 24, 0.35f))
+        assertFalse(Bounds.near(RectI(995, 1200, 1210, 1294), snapshot, 24, 0.35f))
+    }
+
+    @Test
+    fun `rejects invalid snapshot bounds`() {
+        assertFalse(Bounds.near(RectI(995, 121, 1210, 215), RectI(995, 121, 995, 215), 24, 0.35f))
+    }
 }

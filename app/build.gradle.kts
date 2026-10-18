@@ -15,8 +15,8 @@ android {
         applicationId = "com.splashskip.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "0.2.9"
+        versionCode = 23
+        versionName = "0.2.13"
     }
 
     buildTypes {

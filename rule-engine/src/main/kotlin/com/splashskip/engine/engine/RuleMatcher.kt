@@ -59,39 +59,63 @@ class RuleMatcher(
         return best
     }
 
-    private fun matches(match: MatchSpec, node: UiNode): Boolean {
-        if (match.clickable && !node.clickable) return false
+    /**
+     * 用当前节点的字段重新跑一遍规则匹配。
+     * 点击前校验快照时使用：倒计时文字变化（“跳过 3”->“跳过 2”）仍可命中，
+     * 但文字变成“跳过广告，立即下载”等不再满足规则时拒绝。
+     */
+    fun matchesValues(
+        match: MatchSpec,
+        text: String?,
+        contentDescription: String?,
+        viewId: String?,
+        className: String?,
+        clickable: Boolean,
+    ): Boolean {
+        if (match.clickable && !clickable) return false
 
-        val className = match.className
-        if (className != null && node.className != className) return false
+        val ruleClassName = match.className
+        if (ruleClassName != null && className != ruleClassName) return false
 
-        val text = node.text?.trim()?.take(MAX_TEXT_LENGTH)
+        val trimmedText = text?.trim()?.take(MAX_TEXT_LENGTH)
         val hasTextRule = match.textRegex != null || match.texts.isNotEmpty()
         if (hasTextRule) {
-            if (text.isNullOrEmpty()) return false
+            if (trimmedText.isNullOrEmpty()) return false
             val regexHit = match.textRegex?.let { pattern ->
-                regex(pattern)?.matches(text) == true
+                regex(pattern)?.matches(trimmedText) == true
             } ?: false
-            val exactHit = match.texts.any { it.trim() == text }
+            val exactHit = match.texts.any { it.trim() == trimmedText }
             if (!regexHit && !exactHit) return false
         }
 
         val descRegex = match.contentDescriptionRegex
         if (descRegex != null) {
-            val desc = node.contentDescription?.trim()?.take(MAX_TEXT_LENGTH)
+            val desc = contentDescription?.trim()?.take(MAX_TEXT_LENGTH)
             if (desc.isNullOrEmpty()) return false
             if (regex(descRegex)?.matches(desc) != true) return false
         }
 
         val idRegex = match.viewIdRegex
         if (idRegex != null) {
-            val viewId = node.viewId
             if (viewId.isNullOrEmpty()) return false
             if (regex(idRegex)?.matches(viewId) != true) return false
         }
 
         return true
     }
+
+    /** 诊断用：不经过安全门，只判断节点字面字段是否满足规则。 */
+    fun matchesNode(rule: Rule, node: UiNode): Boolean = matches(rule.match, node)
+
+    private fun matches(match: MatchSpec, node: UiNode): Boolean =
+        matchesValues(
+            match = match,
+            text = node.text,
+            contentDescription = node.contentDescription,
+            viewId = node.viewId,
+            className = node.className,
+            clickable = node.clickable,
+        )
 
     private fun regex(pattern: String): Regex? {
         synchronized(regexCache) {

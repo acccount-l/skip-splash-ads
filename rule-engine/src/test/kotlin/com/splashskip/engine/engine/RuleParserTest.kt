@@ -133,4 +133,27 @@ class RuleParserTest {
         assertTrue(result.isFailure)
         assertContains(result.exceptionOrNull()?.message.orEmpty(), "withinMsAfterLaunch")
     }
+
+    @Test
+    fun `accepts six attempts for covered skip control retry`() {
+        val rule = RuleParser.parse(
+            Fixtures.ruleJson(
+                constraintsJson = """{"withinMsAfterLaunch":8000,"cooldownMs":100,"maxAttempts":6,"dryRun":false}""",
+            ),
+        ).getOrThrow().rules.single()
+
+        assertEquals(6, rule.constraints.maxAttempts)
+    }
+
+    @Test
+    fun `rejects attempts above eight`() {
+        val result = RuleParser.parse(
+            Fixtures.ruleJson(
+                constraintsJson = """{"withinMsAfterLaunch":8000,"cooldownMs":100,"maxAttempts":9,"dryRun":false}""",
+            ),
+        )
+
+        assertTrue(result.isFailure)
+        assertContains(result.exceptionOrNull()?.message.orEmpty(), "maxAttempts")
+    }
 }

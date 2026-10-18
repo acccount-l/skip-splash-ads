@@ -60,7 +60,7 @@ fun AppRoot(serviceEnabled: Boolean, refreshTick: Int) {
         ) {
             when (tab) {
                 0 -> HomeScreen(serviceEnabled = serviceEnabled, refreshTick = refreshTick)
-                1 -> RulesScreen()
+                1 -> RulesScreen(refreshTick = refreshTick)
                 else -> LogsScreen()
             }
         }

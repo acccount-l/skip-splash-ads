@@ -4,7 +4,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
 /**
- * 一个 App 的规则集。规则文件只从 APK assets 读取，第一版不联网更新。
+ * 一个 App 的规则集，也就是一个规则模块。
+ *
+ * 内置模块来自 APK assets；用户导入模块来自应用私有目录，可整包覆盖同包名
+ * 内置模块。两者都不联网更新。
  */
 @Serializable
 data class RuleSet(

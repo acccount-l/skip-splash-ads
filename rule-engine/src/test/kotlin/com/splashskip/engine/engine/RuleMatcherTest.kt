@@ -5,8 +5,10 @@ import com.splashskip.engine.model.RectI
 import com.splashskip.engine.model.UiTree
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class RuleMatcherTest {
     private val matcher = RuleMatcher()
@@ -164,6 +166,44 @@ class RuleMatcherTest {
                     Fixtures.SCREEN_H,
                 ),
                 "不应匹配：$text",
+            )
+        }
+    }
+
+    @Test
+    fun `revalidates countdown text against the same rule`() {
+        val match = biliRule.match.copy(
+            viewIdRegex = ".*:id/video_time_skip$",
+            textRegex = "(?i)^\\s*(\\d{1,2}\\s*[sS秒]?\\s*)?(跳过|skip)(\\s*广告)?\\s*[|·]?\\s*\\d{0,2}\\s*[sS秒]?\\s*$",
+            texts = emptyList(),
+            clickable = false,
+        )
+
+        listOf("3 跳过", "2 跳过", "10 跳过", "跳过", "跳过 5 秒").forEach { text ->
+            assertTrue(
+                matcher.matchesValues(
+                    match = match,
+                    text = text,
+                    contentDescription = null,
+                    viewId = "com.example:id/video_time_skip",
+                    className = "android.widget.TextView",
+                    clickable = false,
+                ),
+                "倒计时变化后仍应命中：$text",
+            )
+        }
+
+        listOf("跳过广告，立即下载", "立即下载", "领取红包").forEach { text ->
+            assertFalse(
+                matcher.matchesValues(
+                    match = match,
+                    text = text,
+                    contentDescription = null,
+                    viewId = "com.example:id/video_time_skip",
+                    className = "android.widget.TextView",
+                    clickable = false,
+                ),
+                "文案已不是跳过语义时应拒绝：$text",
             )
         }
     }

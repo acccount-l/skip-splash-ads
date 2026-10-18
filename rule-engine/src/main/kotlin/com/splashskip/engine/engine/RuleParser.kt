@@ -123,7 +123,11 @@ object RuleParser {
     private const val MIN_WINDOW_MS = 500L
     private const val MAX_WINDOW_MS = 30_000L
     private const val MAX_COOLDOWN_MS = 10_000L
-    private const val MAX_ATTEMPTS = 3
+    /**
+     * 有些 App 会先显示品牌页，广告控件已提前出现在树里但被遮挡；
+     * 首次手势不会生效，需要等广告真正展示后重试几次。
+     */
+    private const val MAX_ATTEMPTS = 8
 
     private val PACKAGE_REGEX = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
     private val RULE_ID_REGEX = Regex("^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")

@@ -2,7 +2,7 @@
 
 个人自用的 Android 开屏广告跳过工具。只使用系统 `AccessibilityService`，不需要 root、Shizuku、Xposed/LSPosed，不修改系统，也不申请网络权限。
 
-- 当前版本：`0.2.9`（versionCode 19，2026-10-19）
+- 当前版本：`0.2.13`（versionCode 23，2026-10-19）
 - 包名：`com.splashskip.app`
 - 最低系统：Android 8.0（API 26）
 - 编译/目标系统：Android 16（API 36）
@@ -10,7 +10,7 @@
 - 使用范围：个人自用；源码以 MIT License 开源
 - 仓库地址：https://github.com/acccount-l/skip-splash-ads
 
-> 说明：本 README 记录的是 0.2.9 的状态。`0.2.9` 已在 vivo X100S 上同包名覆盖安装并验证：菜鸟 `homesplash_close_fullscreen`（文字“跳过 3”）真实点击成功并进入首页；中国移动 `video_time_skip`、百度地图 `sdm_myoffer_splash_skip_area` 此前也已真实点击成功。B 站、知乎、QQ音乐、微博此前已验证真实点击。网易云音乐、有道词典、闲鱼等仍待对应广告再次出现后确认。全探测模式是诊断功能，默认关闭，只记录、不点击；已在真机上验证可记录日志且不产生点击统计。
+> 说明：本 README 记录的是 0.2.13 的状态。0.2.13 新增规则模块化：每个 App 的规则集可作为独立 JSON 模块导入/导出，导入模块保存在应用私有目录并整体覆盖同包名内置模块，可随时恢复内置；导入前显示预览，支持多选文件与 ZIP 批量导入、全部导出。0.2.13 已在本机完成导入/导出与热重载真机验证：单模块与 ZIP 批量导入、重复包名跳过、覆盖内置与恢复、无效文件拦截、单模块/全部导出、删除导入、开关持久化均正常，B 站冷启动真实点击回归通过。0.2.12 修正了百度 App 的点击时机：百度先显示品牌页，广告的“跳过”控件约 0.05–0.3 秒就出现在无障碍树里但被遮挡，首次 `dispatchGesture` 返回成功并不代表广告关闭；旧版会立即结束会话，真实广告约 1.5–2 秒出现后不再处理。0.2.12 在点击后保持扫描 600 ms，控件仍在则重试，确认控件消失才计为成功。百度 App 连续 2 次冷启动均为第 1 次点击未生效、第 2 次点击后控件消失并进入首页。中国移动连续两次冷启动均在 `video_time_skip` 命中（文字“2 跳过”）并真实手势点击成功；菜鸟 `homesplash_close_fullscreen`（文字“跳过 3”）此前已验证真实点击成功并进入首页；百度地图 `sdm_myoffer_splash_skip_area`、B 站、知乎、QQ音乐、微博此前也已验证真实点击。携程仍只有 dry-run 探测：2026-10-19 冷启动抓取时未出现开屏广告，`CtripSplashActivity` 在约 0.4 秒内结束，尚无可验证的跳过控件。网易云音乐、有道词典、闲鱼等仍待对应广告再次出现后确认。全探测模式是诊断功能，默认关闭，只记录、不点击；已在真机上验证可记录日志且不产生点击统计。
 
 ## 作者
 
@@ -38,8 +38,9 @@
 | 中国移动 | `com.greenpoint.android.mc10086.activity` | 真实点击成功（`video_time_skip`） |
 | 百度地图 | `com.baidu.BaiduMap` | 真实点击成功（`sdm_myoffer_splash_skip_area`） |
 | 菜鸟 | `com.cainiao.wireless` | 真实点击成功（`homesplash_close_fullscreen`，进入 `HomePageActivity`） |
+| 百度 App | `com.baidu.searchbox` | 真实点击成功（0.2.12：预加载“跳过”控件导致首次手势无效，600 ms 后重试第 2 次，控件消失并进入首页；2/2 次冷启动通过） |
 
-已内置规则、但尚未完成真实点击验证（默认 dry-run 或等待广告再次出现）的应用：淘宝、京东、拼多多、抖音、小红书、百度、高德地图、美团、携程、小黑盒、闲鱼、网易云音乐、网易有道词典。规则明细见第 2 节。
+已内置规则、但尚未完成真实点击验证（默认 dry-run 或等待广告再次出现）的应用：淘宝、京东、拼多多、抖音、小红书、高德地图、美团、携程、小黑盒、闲鱼、网易云音乐、网易有道词典。规则明细见第 2 节。
 
 注意：开屏广告会随目标 App 版本、地区和广告 SDK 变化；规则命中不代表永久有效，失效时应重新抓取节点树后收紧规则。
 
@@ -51,10 +52,13 @@
 - 全局 dry-run：默认开启，只记录“本应点击”，绝不点击。
 - 规则级 dry-run：规则文件里写 `"dryRun": true` 时，即使全局关闭 dry-run，该规则也只记录。
 - 每个 App、每条规则都可以在“规则”页单独启用/停用。
+- 规则模块化（0.2.13）：内置规则 + 本地导入模块。每个 App 一个 JSON 模块，同包名导入整包覆盖内置，可一键恢复内置。
+- 规则导入/导出（0.2.13）：通过系统文件选择器多选 JSON/ZIP，预览后按文件生效；支持导出单个模块或全部模块 ZIP。不申请存储权限、不使用 FileProvider、不联网。
 - 首页提供“打开无障碍开关”按钮，跳到系统无障碍页并尽量定位到本服务。
 - 持久化脱敏日志，进程被杀后仍能查看；支持复制和清空。
 - 今日命中/实际跳过统计、最近命中时间。
 - 同包重复启动：从桌面再次启动同一个 App 时，会作为新会话重新检测。
+- 点击后验证（0.2.12）：手势注入成功不等于广告已关闭；服务保持扫描 600 ms，控件仍在则按 `maxAttempts` 重试，确认“跳过”控件消失后才计入“实际跳过”。
 - 全探测模式（0.2.0 新增，默认关闭）：不依赖内置规则，在任意 App 进入前台后的 10 秒内只读扫描，把“跳过/关闭广告”类候选写入本机日志；绝不点击、返回或执行手势。
 - 探测模式与规则模式互斥：开启时规则开关和 dry-run 都不参与，关闭后恢复原有按包名/Activity 的规则跳过。
 
@@ -72,7 +76,7 @@
 
 ## 2. 当前规则状态
 
-内置 20 个规则文件、33 条规则，全部位于 `app/src/main/assets/rules/`。
+内置 20 个规则文件、33 条规则，全部位于 `app/src/main/assets/rules/`。导入同包名模块后，该 App 的规则整体替换为导入版本；规则页显示的是“内置 ∪ 导入”的当前生效目录，因此模块总数可能因新增导入包名而变化。
 
 | App | 包名 | 规则 | 状态 |
 |---|---|---|---|
@@ -84,10 +88,10 @@
 | 抖音 | `com.ss.android.ugc.aweme` | `douyin_splash_probe` | dry-run 探测；未真实点击 |
 | 小红书 | `com.xingin.xhs` | `xhs_splash_probe` | dry-run 探测；未真实点击 |
 | 微博 | `com.sina.weibo` | `weibo_splash_probe`、`weibo_splash_id_probe`、`weibo_splash_desc_probe` | **真实点击已实测**；0.1.8 文本规则使用 `tapByGesture`（节点树无可点击目标），区域收紧到右上角 `[0.5,0,1,0.2]`；ID/desc 探测仍 dry-run |
-| 百度 | `com.baidu.searchbox` | `baidu_splash_probe` | dry-run 探测；未真实点击 |
+| 百度 App | `com.baidu.searchbox` | `baidu_splash_probe` | **真实点击已实测成功**；0.2.12 命中非 clickable 的 `text="跳过"`（`[968,70][1101,175]`），首次手势因品牌页遮挡无效，保持扫描并在第 2 次点击后确认控件消失；2/2 次冷启动通过 |
 | 高德地图 | `com.autonavi.minimap` | `amap_splash_probe` | dry-run 探测；未真实点击 |
 | 美团 | `com.sankuai.meituan` | `meituan_splash_probe` | dry-run 探测；未真实点击 |
-| 携程旅行 | `ctrip.android.view` | `ctrip_splash_probe` | dry-run 探测；曾出现广告但未识别，待继续验证 |
+| 携程旅行 | `ctrip.android.view` | `ctrip_splash_probe` | dry-run 探测；2026-10-19 冷启动抓取未出现广告（`CtripSplashActivity` 约 0.4 秒内结束），仍待真实广告出现后抓节点树 |
 | 小黑盒 | `com.max.xiaoheihe` | `xiaoheihe_splash_probe` | 0.1.2 新增 dry-run 探测；未真机验证 |
 | 百度地图 | `com.baidu.BaiduMap` | `baidumap_splash_probe`、`baidumap_splash_id_probe`、`baidumap_splash_desc_probe` | **真实点击已实测成功**；0.2.6 命中 `sdm_myoffer_splash_skip_area`（`[925,0][1260,322]`）并关闭；三路规则保留 |
 | 闲鱼 | `com.taobao.idlefish` | `xianyu_splash_probe`、`xianyu_splash_id_probe`、`xianyu_splash_desc_probe` | dry-run 已命中 `text="跳过广告 5"` bounds `[922,112][1204,196]`；0.1.8 文本规则改为真实点击并收紧右上角 `[0.4,0,1,0.2]`，白名单改为 `InitActivity` / `SplashAdDialog`；真实点击待广告再次出现 |
@@ -109,11 +113,25 @@
 - 菜鸟 `com.cainiao.wireless` 8.11.1008：冷启动依次经过 `WelcomeActivity` → `AdsActivity`；关闭控件为 `homesplash_close_fullscreen`（TextView，clickable），文字示例“跳过 3”，bounds `[962,189][1197,288]`。0.2.9 新增三条规则：viewId + 文本手势规则优先，纯 viewId 点击规则兜底，文本手势规则兜底未知 viewId；实测手势点击后进入 `HomePageActivity`。
 - 京东、淘宝、抖音、高德曾冷启动多次但未出现开屏广告，规则尚未获得真实命中样本。
 - 拼多多在其他机器上出现过开屏广告，但日志中没有“开始检测”等记录；需要先排查服务/事件过滤，而不是继续改匹配规则。
-- 携程曾出现开屏广告但未被当前通用规则识别，需后续抓取该版本节点树再收紧。
+- 携程曾出现开屏广告但未被当前通用规则识别。2026-10-19 再次冷启动抓取时，`CtripSplashActivity` 在约 0.4 秒内结束并直接进入 `CtripHomeActivity`，未出现可验证的广告页；此前一次 247 节点的扫描中也没有“跳过/关闭广告”类文字或描述。该 App 的跳过控件可能是纯图片/自定义绘制，需等真实广告出现后用更完整的节点树确认，暂不能安全改为真实点击。
 - 0.1.2 起，淘宝、拼多多、小黑盒、百度地图的探测规则允许非 clickable 文本节点；安全门会向上寻找可点击父节点，并继续检查区域、deny 关键词和面积上限。
 - 0.1.2 起，上述探测规则同时接受“跳过广告 / 点击跳过 / 跳过 3s / 跳过 5 秒”等常见文案变体；仍拒绝“跳过广告，立即下载”这类叠加营销词的文本。
 - 0.1.2 起增加两类诊断日志：每个会话首次成功读取界面时，记录节点总数和最多 4 个“跳过类”候选的脱敏文本/class/bounds；当前 Activity 不在规则白名单时，记录一行 `Activity 不在规则白名单`。用于区分“没收到事件 / Activity 不匹配 / 节点不可读 / 区域不匹配”。
 - dry-run 探测规则使用较宽的右侧区域，只记录候选，不会真实点击。确认命中正确后，才可以逐条收紧并关闭 dry-run。
+
+### 规则模块与导入导出（0.2.13）
+
+- **模块定义**：一个 JSON 文件 = 一个 App 的规则集（`packageName` + `rules`）。内置模块来自 `assets/rules/`；导入模块保存在应用私有目录 `filesDir/rule-modules/<packageName>.json`。
+- **覆盖语义**：导入模块整包替换同包名内置模块，不做规则级合并；没有内置的包名新增为导入模块。删除导入文件（规则页“恢复内置/删除”）后立即回到内置版本。
+- **规则 id 全局唯一**：`rule_enabled_<id>` 是全局偏好键。导入模块不能复用其他包名的规则 id；被导入模块覆盖的内置 id 仍永久保留，保证恢复内置后不冲突。允许复用本包自己的内置 id。
+- **导入流程**：规则页“导入模块” → 系统文件选择器可多选 JSON/ZIP → 应用读取并校验 → 预览每个文件的包名、规则数、CLICK/BACK、dry-run、手势、禁用、全屏区域和覆盖关系 → 确认后只写入标记“可导入”的模块。ZIP 按文件头识别，不依赖扩展名。
+- **导出**：每个 App 标题旁“导出”生成 `<packageName>.json`；“导出全部”生成根目录含 `<packageName>.json` 的 ZIP，该 ZIP 可直接再导入。导出优先保留模块原始 JSON 格式。
+- **限额**：单模块 ≤ 256 KiB、≤ 64 条规则、包名 ≤ 150 字符；ZIP ≤ 4 MiB、≤ 256 个条目、单条目 ≤ 256 KiB、解压总量 ≤ 2 MiB；一次最多 256 个候选模块。
+- **保护包**：禁止导入/处理自身、`android`、SystemUI、Settings、权限控制器、包安装器、GMS/Play Store；服务运行时还会拦截自身包和桌面包。
+- **不改变全局设置**：导入不会修改全局 dry-run、全探测模式或已有规则开关；全局 dry-run 仍然覆盖所有导入规则。同一 id 的规则开关在覆盖后保留。
+- **生效方式**：导入/删除后递增规则修订号，无障碍服务在后台重新加载，无需手动重启服务；加载失败时保留内置版本并显示错误。
+- **卸载与更新**：覆盖安装保留 `filesDir` 中的导入模块；卸载 App 会删除所有导入模块。`allowBackup="false"`，模块不会进入系统云备份。
+- **真机验证（0.2.13）**：在 vivo X100S 上完成单模块与 ZIP 批量导入、同批次重复包名跳过、覆盖内置/恢复内置、损坏/超大/保护包/跨包 id 冲突/路径穿越/空 ZIP 拦截、单模块与全部导出、删除导入、规则开关持久化和无重启热重载；全部导出 ZIP 可再次导入且包名与文件名一致。验证期间未新增任何权限（无 INTERNET/存储权限）。
 
 ## 3. 安全设计
 
@@ -131,6 +149,7 @@
 10. **失败关闭**：任何一步失败都不点击，不回落坐标点击。
 11. **dry-run**：全局开关默认开启；规则级 `dryRun: true` 是硬保险。
 12. **全探测模式硬隔离**：`probeAll` 开启时，`performScan` / `handleHits` / `performClick` / `tapNodeCenter` 四处都有二次守卫；探测路径只调用 `ProbeMatcher` 并写日志，不调用点击、手势或返回，也不读写命中/点击统计。切换开关时先结束规则会话和探测会话，再重设事件过滤。
+13. **规则模块导入边界**：导入前逐文件校验大小、规则数、包名、保护包和跨模块规则 id；预览展示动作类型、dry-run、手势和全屏区域数量，用户确认后才写入。ZIP 只在内存展开，限制条目数、单条大小和解压总量，拒绝绝对路径/`..`/盘符条目；导入文件名必须与包名一致。服务运行时还会拦截自身、桌面包和保护包。
 
 不支持、也不做：
 
@@ -143,7 +162,7 @@
 ## 4. 隐私与权限
 
 - **没有 `INTERNET` 权限**：App 不能联网，规则不会在线更新，日志不会上传。
-- **没有存储权限**：日志只写入应用私有目录。
+- **没有存储权限**：日志和导入模块只写入应用私有目录；规则导入/导出仅通过系统文件选择器（SAF）读写用户主动选中的 URI，不申请 `READ/WRITE_EXTERNAL_STORAGE` 或 `MANAGE_EXTERNAL_STORAGE`，不使用 FileProvider，也不持久化 URI。
 - **没有悬浮窗、通知、前台服务、媒体投影、`QUERY_ALL_PACKAGES`**。
 - Manifest 只有一个 `HOME` intent 的 `<queries>`，用于解析桌面包名，让“回到桌面”能结束当前检测窗口；这是包可见性声明，不是权限，也不读取桌面内容。
 - `android:allowBackup="false"`，`android:usesCleartextTraffic="false"`。
@@ -196,7 +215,7 @@ SplashSkip/
 │  │  ├─ AndroidManifest.xml
 │  │  ├─ assets/rules/*.json          # 内置规则，不联网更新
 │  │  ├─ kotlin/com/splashskip/app/
-│  │  │  ├─ data/                     # 规则加载、设置、日志存储
+│  │  │  ├─ data/                     # 规则目录、模块导入存储、设置、日志存储
 │  │  │  ├─ service/                  # 无障碍服务、节点映射
 │  │  │  ├─ ui/                       # Compose 界面
 │  │  │  └─ SplashSkipApp.kt
@@ -263,19 +282,19 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ### 7.3 测试
 
-- `rule-engine`：规则解析、匹配、边界、安全门、快照回放；`ProbeMatcherTest` 覆盖 16 个用例（跳过/关闭变体、拒绝危险文案、text/desc 优先级、不可见/禁用/越界节点、可点击祖先、中心归一化、上限与去重、NBSP 空白）。
-- `app`：内置规则资产全部可解析、规则 id 唯一、日志行编码/解码；`NewRulesTest` 当前 20 个用例全部通过，其中菜鸟新增 6 个（手势命中、倒计时前缀、拒绝广告 CTA、纯 viewId 点击、越界拒绝、文本兜底）。
-- 构建命令会同时运行单元测试；当前构建结果 `BUILD SUCCESSFUL`。
+- `rule-engine`：规则解析、匹配、边界、安全门、快照回放；`ProbeMatcherTest` 覆盖 16 个用例（跳过/关闭变体、拒绝危险文案、text/desc 优先级、不可见/禁用/越界节点、可点击祖先、中心归一化、上限与去重、NBSP 空白）。0.2.13 新增 `RuleImportValidator`、`RuleJson`、`RuleBundleCodec`、`RuleCatalogBuilder`、`RuleImportPlanner` 共 46 个用例（模块大小/规则数/保护包/BOM、JSON 往返、ZIP 限额与路径过滤、内置合并与导入覆盖、批次重复与 id 冲突、恢复内置后的 id 唯一性）。当前 110 个用例全部通过。
+- `app`：内置规则资产全部可解析、规则 id 唯一、日志行编码/解码；0.2.13 新增 `RuleModuleStore` 原子读写/删除/限额/路径安全与“内置资产构建后为 20 个模块、33 条规则且无错误”共 10 个用例。`NewRulesTest` 保持 23 个用例。当前 37 个用例全部通过。
+- 构建命令会同时运行单元测试；0.2.13 构建结果 `BUILD SUCCESSFUL`。导入/导出的 SAF 文件选择与服务无重启重载已在 vivo X100S 真机验证通过。
 
 ## 8. 安装与首次使用
 
 1. 安装 debug APK：
 
    ```bash
-   adb install -r SplashSkip-v0.2.9-debug.apk
+   adb install -r SplashSkip-v0.2.13-debug.apk
    ```
 
-   如果提示签名不一致，需要先卸载旧版再安装；卸载会清除设置和日志。`0.2.9` 与此前版本使用同一 applicationId 和同一 debug keystore 构建时，`-r` 会覆盖安装并保留设置/日志。
+   如果提示签名不一致，需要先卸载旧版再安装；卸载会清除设置、日志和导入的规则模块。`0.2.13` 与此前版本使用同一 applicationId 和同一 debug keystore 构建时，`-r` 会覆盖安装并保留设置、日志和导入模块。
 
 2. 打开“开屏跳过”，点“打开无障碍开关”，在系统列表中开启本服务。
 
@@ -337,13 +356,13 @@ app/build/outputs/apk/debug/app-debug.apk
 - `match.clickable`：是否要求候选自身可点击，默认 `true`。
 - `match.allowedBounds`：归一化 `[left, top, right, bottom]`，取值 0..1；为空时默认右上角。
 - `action`：`CLICK` 或 `BACK`。
-- `tapByGesture`：默认 `false`。仅用于“有跳过文字、但整棵节点树没有 clickable 节点”的广告页；开启后规则必须至少包含 `textRegex`、`texts` 或 `contentDescriptionRegex` 之一，点击前仍要通过安全门、快照校验和面积/区域复检。
+- `tapByGesture`：默认 `false`。仅用于“匹配到的文字节点本身不可点击（可能只有可点击祖先）”的广告页；开启后规则必须至少包含 `textRegex`、`texts` 或 `contentDescriptionRegex` 之一，点击前仍要通过安全门、快照校验和面积/区域复检。
 - `constraints.withinMsAfterLaunch`：进入 App 后的检测窗口，500–30000 ms。
 - `constraints.cooldownMs`：两次尝试的冷却，0–10000 ms。
-- `constraints.maxAttempts`：每个会话最多尝试次数，1–3。
+- `constraints.maxAttempts`：每个会话最多尝试次数，1–8。点击后验证失败会消耗一次尝试。
 - `constraints.dryRun`：`true` 时该规则永不真实点击。
 
-规则只从 APK 内置 assets 读取；修改 JSON 后需要重新构建/安装，App 不联网更新规则。
+规则来源是“内置模块 + 本地导入模块”：内置模块仍来自 APK `assets/rules/`；导入模块位于应用私有目录 `filesDir/rule-modules/<packageName>.json`，文件名必须等于包名。App 不联网更新规则，也不从 URL 下载规则。修改内置 JSON 需要重新构建/安装；临时调整可直接在规则页导入同包名模块，删除导入文件即可恢复内置。
 
 ## 10. 已知限制
 
@@ -354,7 +373,9 @@ app/build/outputs/apk/debug/app-debug.apk
 - **`accessibilityDataSensitive`**：Android 14+ 可能把某些视图标记为敏感；本 App 如实声明 `isAccessibilityTool="false"`，读不到就失败关闭，不伪装成残障辅助工具。
 - **Android 17 Advanced Protection Mode**：开启 AAPM 后，非无障碍工具类服务可能被阻止/撤销；这是平台策略，不能也不应绕过。当前设备是 Android 16。
 - **vivo/OriginOS 可能自动关闭无障碍服务**：App 不能自动改系统设置；需要用户按第 8 节保活。
-- **规则会随目标 App 改版失效**：需要重新抓节点树、收紧规则；目前完成真实点击验证的是 B 站、知乎、QQ音乐、微博、百度地图、中国移动、菜鸟。微博和菜鸟依赖手势点击，若广告改版导致“跳过”文字不再出现在节点树中，会失败关闭；菜鸟另有纯 viewId 点击规则兜底。
+- **规则会随目标 App 改版失效**：需要重新抓节点树、收紧规则；目前完成真实点击验证的是 B 站、知乎、QQ音乐、微博、百度地图、中国移动、菜鸟、百度 App。微博、菜鸟和百度 App 依赖手势点击，若广告改版导致“跳过”文字不再出现在节点树中，会失败关闭；菜鸟另有纯 viewId 点击规则兜底。
+- **导入模块由用户自行维护**：来源不明的规则可能扩大允许区域或启用真实点击。预览会显示动作类型、dry-run、手势和全屏区域数量，但导入前仍应确认规则内容；全局 dry-run 是最后一道保险。
+- **导入模块不跨设备同步**：模块只保存在本机应用私有目录，`allowBackup="false"`，卸载 App 会删除；可用“导出全部”自行备份，再在其他设备导入。
 - **拼多多/淘宝日志为空的问题尚未定位**：如果其他机器上连“服务已连接/开始检测”都没有，优先检查无障碍服务是否真正运行、拼多多/淘宝是否在应用分身/隐私空间、以及规则是否启用；不是改匹配规则能解决的。
 - **小黑盒规则未真机验证**：小黑盒仍待开屏广告出现后确认 Activity、命中文本、bounds 并收紧。百度地图已在 0.2.6 真机验证：`sdm_myoffer_splash_skip_area` 在 `[925,0][1260,322]` 命中并真实点击成功。
 - **非 vivo 冒烟测试、24 小时待机功耗、长期保活**：尚未完成。
@@ -363,6 +384,47 @@ app/build/outputs/apk/debug/app-debug.apk
 - **未上架、未做应用商店合规评估**：目标 App 的服务条款、广告主投诉、无障碍 API 政策等风险由使用者自行评估。
 
 ## 11. 变更记录
+
+### 0.2.13（2026-10-19）
+
+- 新增规则模块化：一个 App 的规则集视为独立 JSON 模块；内置模块来自 `assets/rules/`，导入模块保存在 `filesDir/rule-modules/<packageName>.json`，同包名整包覆盖内置，删除导入文件即恢复内置。
+- 新增 `rule-engine` 纯 JVM 模块层：`RuleImportValidator`（大小/规则数/包名/保护包校验与 BOM 处理）、`RuleJson`（原文往返）、`RuleBundleCodec`（ZIP 内存读写、条目路径与四重限额）、`RuleCatalogBuilder`（内置跨文件合并、导入覆盖、全局 id 唯一、被遮蔽 id 保留）、`RuleImportPlanner`（批次重复、跨包冲突、覆盖关系与预览统计）。
+- 新增 App 数据层：`RuleModuleStore`（私有目录原子写入/删除/限额）、`RuleCatalogRepository`（统一加载目录、导入规划/应用、导入删除、单模块/全部导出、规则开关清理、修订号递增）、`RuleFileReader`（SAF 多选 JSON/ZIP 有界读取，按文件头识别 ZIP）。移除仅支持 assets 的 `AssetRuleRepository`。
+- 无障碍服务改为 `@Volatile` 规则快照 + 单线程 IO 重载 + generation 丢弃过期结果；导入/删除后监听 `rule_revision` 自动重载，无需重启服务。重载前结束当前会话，并清空同包重启冷却。
+- 规则启用语义统一为“模块内 `enabled=true` 且用户开关开启”；规则目录变化后只清理已不存在规则的 `rule_enabled_*`，保留幸存规则开关。
+- 规则页新增“规则模块”卡：导入模块（多选 JSON/ZIP）、导出全部 ZIP、重新加载；每个 App 显示内置/导入/导入·覆盖内置徽标，支持导出、恢复内置或删除导入，删除/恢复需二次确认。
+- 导入预览显示每个文件的包名、规则数、CLICK/BACK、dry-run、手势、禁用、全屏区域、覆盖关系和跳过原因；确认后只写入可导入模块，全部失败时不可确认。写入使用 `NonCancellable`，完成后显示结果。
+- 安全边界：单模块 ≤ 256 KiB、≤ 64 条规则、包名 ≤ 150 字符；ZIP ≤ 4 MiB、≤ 256 条目、单条目 ≤ 256 KiB、解压总量 ≤ 2 MiB；一次最多 256 个候选；保护包在导入和服务运行时双重拦截。Manifest 不新增权限、不加 FileProvider。
+- 新增 46 个 rule-engine 用例和 10 个 app 用例；`NewRulesTest` 23 个用例保持通过。`:rule-engine:test :app:testDebugUnitTest :app:assembleDebug` 构建成功。
+- 版本号提升到 `0.2.13`（versionCode 23）。已在 vivo X100S（Android 16）完成真机验证：规则页导入预览/应用、ZIP 批量与重复包名、覆盖内置/恢复内置、无效输入拦截、单模块/全部导出、删除导入、开关持久化与无重启热重载；验证期间无 INTERNET/存储权限，B 站冷启动真实点击回归通过。
+
+### 0.2.12（2026-10-19）
+
+- 修复百度 App 开屏广告“命中并显示执行成功、但广告仍在”：连续抓帧和截图确认百度先显示品牌页，广告的“跳过”控件（`RelativeLayout [955,70][1207,175]`，内含非 clickable `TextView "跳过" [968,70][1101,175]`）在约 0.05–0.3 秒已进入无障碍树，但被品牌页遮挡；此时 `dispatchGesture` 返回 true 只代表手势注入成功。旧版立即 `endSession("success")`，约 1.5–2 秒后真实广告出现时已不再扫描。
+- 服务层改为点击后继续扫描并验证：600 ms 内不重复点击；验证窗口过后控件仍在则记录“点击未生效”并按 `maxAttempts` 重试；扫描确认“跳过”控件消失后才记录“点击确认”和“实际跳过”统计并结束会话。点击后额外补一次验证扫描，避免没有内容变化事件时验证不执行。
+- `RuleParser` 的 `maxAttempts` 上限从 3 提高到 8；百度 `baidu_splash_probe` 的 `maxAttempts` 改为 6，以便覆盖品牌页之后的真实广告。
+- vivo X100S 两次冷启动验证（01:08:56、01:09:17 启动）：两次均为第 1 次手势未生效（约 650 ms 后控件仍在），第 2 次手势后约 620–730 ms 确认控件消失并 `检测结束：success`；截图显示已进入百度首页，统计“实际跳过”从 23 增至 25。
+- `:rule-engine:test :app:testDebugUnitTest :app:assembleDebug` 通过；`NewRulesTest` 23 个用例保持通过。
+- 版本号提升到 `0.2.12`（versionCode 22）。
+
+### 0.2.11（2026-10-19）
+
+- 修复百度 App `com.baidu.searchbox` 开屏广告识别后不点击：真机日志显示“跳过”节点是 `TextView` 且 `clickable=false`，原规则要求 `clickable=true`，因此只被诊断统计到、没有命中。`baidu_splash_probe` 改为 `clickable=false` + `tapByGesture=true`，文字正则覆盖“点击跳过 / 跳过广告 / 2 跳过 / 跳过 3s”等变体，冷却 100 ms、最多尝试 3 次，并开启真实点击。
+- vivo X100S 当时实测：00:55:54 与 00:56:16 两次冷启动均在 `MainActivity` 命中 `text="跳过"`、bounds `[968,70][1101,175]`，从命中到 `dispatchGesture` 成功约 12 ms；随后界面树显示百度首页视图 `NewHomeView`。事后复核发现，这两次“成功”只代表手势已注入；品牌页遮挡下的首次点击并未关闭广告，真实广告约 1.5–2 秒后才出现。该问题在 0.2.12 修复。
+- 携程复核：冷启动抓取到 `CtripSplashActivity`，但该 Activity 约 0.4 秒内结束并进入 `CtripHomeActivity`，本次没有出现开屏广告；此前 247 节点扫描中也没有“跳过/关闭广告”类文字或描述。携程规则继续保持 dry-run，等真实广告出现后再抓节点树，不改为盲点坐标。
+- 单元测试新增 3 个百度 App 用例（非 clickable “跳过”命中、“跳过广告 3”命中、拒绝“跳过广告，立即下载”）；`NewRulesTest` 23 个用例全部通过，`:rule-engine:test :app:testDebugUnitTest :app:assembleDebug` 成功。
+- 版本号提升到 `0.2.11`（versionCode 21）。
+
+### 0.2.10（2026-10-19）
+
+- 修复中国移动“命中后点击失败：当前界面已无匹配控件”：手势规则点击前不再要求快照文字完全一致，而是用当前文字重新执行同一规则；倒计时从“3 跳过”变成“2 跳过”仍可点击，但“跳过广告，立即下载”等文案仍会被拒绝。
+- 稳定 viewId 的节点允许倒计时重排造成的少量 bounds 漂移；纯文本规则的容差更小，位置大幅变化仍判定快照失效。
+- 点击前再次检查文字、contentDescription 和 viewId 的 deny 关键词，防止倒计时/文案变化后误点下载、支付、登录等控件。
+- 真实点击失败后不再被会话内节点去重直接锁死，可在 `cooldownMs` 后由后续扫描重试；`maxAttempts` 仍是硬上限。dry-run 日志仍只记录一次，避免刷屏。
+- 新增失败诊断：二次匹配失败时记录树节点数、字面匹配数、安全门拒绝原因，以及直接定位是“节点不存在”还是“快照校验失败”。
+- vivo X100S 实测（0.2.10，logcat 毫秒时间戳）：中国移动连续两次冷启动均在 `video_time_skip` 命中“2 跳过”，从命中到 `dispatchGesture` 成功约 16 ms；从 `StartPageActivity` 会话开始到命中约 2.2–2.5 秒，日志显示此前扫描时广告树只有 2–5 个节点、没有跳过文字，剩余延迟来自广告 SDK 暴露“跳过”控件的时机，不是扫描/点击队列。
+- 单元测试：`Bounds.near` 漂移容差、倒计时文字重新校验等新增用例通过；`:rule-engine:test :app:testDebugUnitTest :app:assembleDebug` 全部成功。
+- 版本号提升到 `0.2.10`（versionCode 20）。
 
 ### 0.2.9（2026-10-19）
 

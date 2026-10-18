@@ -492,4 +492,74 @@ class NewRulesTest {
             ),
         )
     }
+
+    @Test
+    fun `baidu app observed non clickable skip text matches`() {
+        val rule = loadRule("baidu.json", "baidu_splash_probe")
+        assertTrue(rule.tapByGesture)
+        val node = UiNode(
+            viewId = null,
+            className = "android.widget.TextView",
+            text = "跳过",
+            clickable = false,
+            bounds = RectI(968, 70, 1101, 175),
+            packageName = rule.packageName,
+        )
+
+        assertNotNull(
+            matcher.findBest(
+                tree(rule.packageName, node),
+                rule,
+                rule.packageName,
+                screenW,
+                screenH,
+            ),
+        )
+    }
+
+    @Test
+    fun `baidu app skip ad with countdown matches`() {
+        val rule = loadRule("baidu.json", "baidu_splash_probe")
+        val node = UiNode(
+            viewId = null,
+            className = "android.widget.TextView",
+            text = "跳过广告 3",
+            clickable = false,
+            bounds = RectI(955, 70, 1207, 175),
+            packageName = rule.packageName,
+        )
+
+        assertNotNull(
+            matcher.findBest(
+                tree(rule.packageName, node),
+                rule,
+                rule.packageName,
+                screenW,
+                screenH,
+            ),
+        )
+    }
+
+    @Test
+    fun `baidu app ad call to action is rejected`() {
+        val rule = loadRule("baidu.json", "baidu_splash_probe")
+        val node = UiNode(
+            viewId = null,
+            className = "android.widget.TextView",
+            text = "跳过广告，立即下载",
+            clickable = false,
+            bounds = RectI(968, 70, 1101, 175),
+            packageName = rule.packageName,
+        )
+
+        assertNull(
+            matcher.findBest(
+                tree(rule.packageName, node),
+                rule,
+                rule.packageName,
+                screenW,
+                screenH,
+            ),
+        )
+    }
 }

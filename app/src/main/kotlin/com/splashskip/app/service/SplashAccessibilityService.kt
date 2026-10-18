@@ -16,19 +16,22 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.InputMethodManager
-import com.splashskip.app.data.AssetRuleRepository
+import com.splashskip.app.data.RuleCatalogRepository
 import com.splashskip.app.data.SettingsStore
 import com.splashskip.app.data.SplashLog
 import com.splashskip.engine.engine.Bounds
 import com.splashskip.engine.engine.Candidate
+import com.splashskip.engine.engine.GateResult
 import com.splashskip.engine.engine.ProbeMatcher
 import com.splashskip.engine.engine.RuleMatcher
 import com.splashskip.engine.engine.SafetyGate
 import com.splashskip.engine.model.Action
+import com.splashskip.engine.model.RectI
 import com.splashskip.engine.model.Rule
 import com.splashskip.engine.model.RuleSet
 import com.splashskip.engine.model.UiNode
 import com.splashskip.engine.model.UiTree
+import com.splashskip.engine.rules.RuleImportValidator
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,11 +45,18 @@ class SplashAccessibilityService : AccessibilityService() {
     private val scanExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "splash-scan")
     }
+    private val rulesExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "splash-rules")
+    }
     private val matcher = RuleMatcher()
+    private val safetyGate = SafetyGate()
     private val scanInFlight = AtomicBoolean(false)
 
     private lateinit var settings: SettingsStore
+    private lateinit var catalogRepository: RuleCatalogRepository
+    @Volatile
     private var loadedRuleSets: List<RuleSet> = emptyList()
+    private var rulesGeneration = 0L
     private var session: Session? = null
     private var foregroundPackage: String? = null
     private var foregroundActivity: String? = null
@@ -73,6 +83,9 @@ class SplashAccessibilityService : AccessibilityService() {
         var attempts: Int = 0,
         var lastAttemptAtMs: Long = 0L,
         var clicked: Boolean = false,
+        /** 已发送点击但尚未确认广告是否真正关闭。 */
+        var pendingVerify: Boolean = false,
+        var lastClickAtMs: Long = 0L,
         val reportedKeys: MutableSet<String> = mutableSetOf(),
         val reportedActivityMismatches: MutableSet<String> = mutableSetOf(),
         var scanDiagnosticLogged: Boolean = false,
@@ -99,6 +112,7 @@ class SplashAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         settings = SettingsStore(this)
+        catalogRepository = RuleCatalogRepository(this)
 
         // 重连时清掉旧会话与旧回调，避免重复探测/重复扫描。
         cancelProbeCallbacks()
@@ -113,23 +127,16 @@ class SplashAccessibilityService : AccessibilityService() {
         inputMethodPackages += enabledInputMethodPackages()
 
         prefListener?.let { settings.unregisterRuleChangeListener(it) }
-        val loaded = AssetRuleRepository(this).loadAll()
-        loadedRuleSets = loaded.ruleSets
-        applyEventFilter()
-
-        loaded.errors.forEach { SplashLog.error("规则错误：$it") }
-        if (loaded.ruleSets.isEmpty()) {
-            SplashLog.error("没有可用规则；规则模式不会处理 App（全探测模式不受影响）")
-        } else {
-            val count = loaded.ruleSets.sumOf { it.rules.size }
-            SplashLog.info("服务已连接：${loaded.ruleSets.size} 个 App，$count 条规则")
-        }
         if (settings.probeAll) {
             SplashLog.info("全探测模式已开启：只记录，不点击")
         }
 
         prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when {
+                key == SettingsStore.KEY_RULE_REVISION -> {
+                    reloadRules("rule_revision")
+                }
+
                 key == SettingsStore.KEY_PROBE_ALL -> {
                     val enabled = settings.probeAll
                     endSession("probe_mode_changed")
@@ -150,6 +157,52 @@ class SplashAccessibilityService : AccessibilityService() {
                 }
             }
         }.also { settings.registerRuleChangeListener(it) }
+
+        reloadRules("service_connected")
+    }
+
+    /**
+     * 在 IO 线程重新读取“内置 + 导入”规则目录，回到主线程后替换快照。
+     * 先结束当前会话，避免旧规则会话与新规则同时存在；generation 丢弃过期结果。
+     */
+    private fun reloadRules(reason: String) {
+        if (destroyed || !this::catalogRepository.isInitialized) return
+        val generation = ++rulesGeneration
+        endSession("rules_changed")
+
+        try {
+            rulesExecutor.execute {
+                val catalog = try {
+                    catalogRepository.load()
+                } catch (t: Throwable) {
+                    SplashLog.error("规则加载失败：${t.javaClass.simpleName}")
+                    null
+                }
+                mainHandler.post {
+                    if (destroyed || generation != rulesGeneration || catalog == null) {
+                        return@post
+                    }
+                    loadedRuleSets = catalog.ruleSets
+                    // 规则整体变化后，同包重启冷却可能误伤新规则，直接清空。
+                    lastEndedSessionPackage = null
+                    lastEndedSessionAtMs = 0L
+                    applyEventFilter()
+
+                    catalog.errors.forEach { SplashLog.error("规则错误：$it") }
+                    if (catalog.ruleSets.isEmpty()) {
+                        SplashLog.error("没有可用规则；规则模式不会处理 App（全探测模式不受影响）")
+                    } else {
+                        val count = catalog.ruleSets.sumOf { it.rules.size }
+                        SplashLog.info(
+                            "规则已重新加载（$reason）：${catalog.ruleSets.size} 个 App，" +
+                                "$count 条规则，导入模块 ${catalog.importedPackages.size} 个",
+                        )
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            // 服务销毁后 executor 已关闭。
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -188,12 +241,14 @@ class SplashAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         destroyed = true
+        rulesGeneration++
         mainHandler.removeCallbacksAndMessages(null)
         if (this::settings.isInitialized) {
             prefListener?.let { settings.unregisterRuleChangeListener(it) }
         }
         prefListener = null
         scanExecutor.shutdownNow()
+        rulesExecutor.shutdownNow()
         session = null
         probeSession = null
         probeDebounceRunnable = null
@@ -218,8 +273,9 @@ class SplashAccessibilityService : AccessibilityService() {
         }
 
         val enabledPackages = loadedRuleSets
-            .filter { ruleSet -> ruleSet.rules.any { settings.isRuleEnabled(it.id) } }
+            .filter { ruleSet -> ruleSet.rules.any { settings.isRuleActive(it) } }
             .map { it.packageName }
+            .filterNot { isProtectedRuntimePackage(it) }
             .distinct()
 
         val packages = if (enabledPackages.isEmpty()) {
@@ -228,7 +284,7 @@ class SplashAccessibilityService : AccessibilityService() {
             // 额外接收桌面的窗口事件：用户从桌面再次启动同一个 App 时，
             // 先看到桌面事件，foregroundPackage 才会真正切换，下一次启动
             // 就能按“新会话”处理。只读取包名/类名，不读取桌面内容。
-            (enabledPackages + listOfNotNull(homePackageName())).distinct().toTypedArray()
+            (enabledPackages + listOfNotNull(homePackage)).distinct().toTypedArray()
         }
 
         serviceInfo = serviceInfo.apply {
@@ -268,7 +324,20 @@ class SplashAccessibilityService : AccessibilityService() {
         emptySet()
     }
 
+    /** 自身、桌面、系统/权限/安装器等包一律不参与规则模式。 */
+    private fun isProtectedRuntimePackage(pkg: String): Boolean =
+        pkg == packageName ||
+            pkg == homePackage ||
+            RuleImportValidator.isBlockedPackage(pkg)
+
     private fun handleWindowState(pkg: String, activity: String?) {
+        if (isProtectedRuntimePackage(pkg)) {
+            foregroundPackage = pkg
+            foregroundActivity = null
+            endSession("protected_package")
+            return
+        }
+
         val previousPackage = foregroundPackage
         foregroundPackage = pkg
         if (previousPackage != pkg) {
@@ -313,9 +382,7 @@ class SplashAccessibilityService : AccessibilityService() {
     private fun isActivityAllowed(pkg: String, activity: String): Boolean {
         val ruleSet = loadedRuleSets.firstOrNull { it.packageName == pkg } ?: return false
         return ruleSet.rules.any { rule ->
-            rule.enabled &&
-                settings.isRuleEnabled(rule.id) &&
-                activity in rule.activityIds
+            settings.isRuleActive(rule) && activity in rule.activityIds
         }
     }
 
@@ -343,9 +410,7 @@ class SplashAccessibilityService : AccessibilityService() {
         }
 
         val activityAllowed = ruleSet.rules.any { rule ->
-            rule.enabled &&
-                settings.isRuleEnabled(rule.id) &&
-                activity in rule.activityIds
+            settings.isRuleActive(rule) && activity in rule.activityIds
         }
         if (!activityAllowed) return
 
@@ -390,7 +455,7 @@ class SplashAccessibilityService : AccessibilityService() {
         debounceRunnable?.let { mainHandler.removeCallbacks(it) }
         debounceRunnable = null
 
-        val enabledRules = ruleSet.rules.filter { settings.isRuleEnabled(it.id) }
+        val enabledRules = ruleSet.rules.filter { settings.isRuleActive(it) }
         val matchingRules = enabledRules.count { rule ->
             activity != null && activity in rule.activityIds
         }
@@ -661,7 +726,8 @@ class SplashAccessibilityService : AccessibilityService() {
     private fun performScan() {
         if (settings.probeAll) return
         val current = session ?: return
-        if (current.clicked) return
+        // 点击后仍要继续扫描：dispatchGesture 返回 true 只代表手势已注入，
+        // 不代表广告真的关闭（百度开屏会先显示品牌页，广告控件提前存在但被遮挡）。
         if (!scanInFlight.compareAndSet(false, true)) return
 
         val now = SystemClock.elapsedRealtime()
@@ -691,15 +757,13 @@ class SplashAccessibilityService : AccessibilityService() {
         }
 
         val activityRules = current.ruleSet.rules.filter { rule ->
-            rule.enabled &&
-                settings.isRuleEnabled(rule.id) &&
-                activityCandidates.any { it in rule.activityIds }
+            settings.isRuleActive(rule) && activityCandidates.any { it in rule.activityIds }
         }
         if (activityRules.isEmpty()) {
             // 用于定位“App 有开屏广告、但当前 Activity 不在规则白名单”导致的无日志无命中。
             val activityLabel = activityCandidates.joinToString(" / ")
             if (current.reportedActivityMismatches.add(activityLabel)) {
-                val enabledCount = current.ruleSet.rules.count { settings.isRuleEnabled(it.id) }
+                val enabledCount = current.ruleSet.rules.count { settings.isRuleActive(it) }
                 SplashLog.info(
                     "Activity 不在规则白名单：${current.ruleSet.packageName} / $activityLabel" +
                         "（已启用 $enabledCount 条规则）",
@@ -780,7 +844,33 @@ class SplashAccessibilityService : AccessibilityService() {
 
     private fun handleHits(current: Session, hits: List<ScanHit>) {
         if (settings.probeAll) return
-        if (hits.isEmpty()) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (hits.isEmpty()) {
+            // dispatchGesture 返回 true 只代表手势已注入，不代表广告已关闭。
+            // 至少等一个验证窗口，期间持续扫描；确认“跳过”控件消失后才算成功。
+            if (current.pendingVerify &&
+                now - current.lastClickAtMs >= POST_CLICK_VERIFY_MS
+            ) {
+                current.pendingVerify = false
+                settings.recordClick()
+                SplashLog.info("点击确认：跳过控件已消失（${current.ruleSet.packageName}）")
+                endSession("success")
+            }
+            return
+        }
+
+        if (current.pendingVerify) {
+            if (now - current.lastClickAtMs < POST_CLICK_VERIFY_MS) {
+                // 刚发送过点击，给广告关闭留出时间；不要重复点击。
+                return
+            }
+            // 验证窗口已过、控件仍在：上一次手势没有真正关闭广告，继续重试。
+            current.pendingVerify = false
+            SplashLog.info(
+                "点击未生效：跳过控件仍存在，准备重试（${current.ruleSet.packageName}）",
+            )
+        }
 
         for (hit in hits) {
             val rule = hit.rule
@@ -792,9 +882,11 @@ class SplashAccessibilityService : AccessibilityService() {
                 append(node.className).append('|')
                 append(node.bounds)
             }
-            if (!current.reportedKeys.add(key)) continue
-
             val effectiveDryRun = settings.dryRun || rule.constraints.dryRun
+            // dry-run 每会话只记录一次，避免高频复查刷屏；
+            // 真实点击失败后允许后续扫描重试，由 maxAttempts 控制总次数。
+            if (effectiveDryRun && !current.reportedKeys.add(key)) continue
+
             settings.recordHit()
             settings.recordLastHit(rule.id)
 
@@ -813,15 +905,15 @@ class SplashAccessibilityService : AccessibilityService() {
                 continue
             }
 
-            val now = SystemClock.elapsedRealtime()
+            val attemptNow = SystemClock.elapsedRealtime()
             if (current.attempts >= rule.constraints.maxAttempts) continue
             if (current.lastAttemptAtMs > 0L &&
-                now - current.lastAttemptAtMs < rule.constraints.cooldownMs
+                attemptNow - current.lastAttemptAtMs < rule.constraints.cooldownMs
             ) {
                 continue
             }
             current.attempts++
-            current.lastAttemptAtMs = now
+            current.lastAttemptAtMs = attemptNow
 
             val success = if (rule.action == Action.BACK) {
                 performGlobalAction(GLOBAL_ACTION_BACK)
@@ -831,9 +923,13 @@ class SplashAccessibilityService : AccessibilityService() {
 
             if (success) {
                 current.clicked = true
-                settings.recordClick()
-                SplashLog.info("执行成功：${rule.id} / ${rule.action}")
-                endSession("success")
+                current.pendingVerify = true
+                current.lastClickAtMs = attemptNow
+                SplashLog.info(
+                    "已发送点击：${rule.id} / ${rule.action}" +
+                        "（第 ${current.attempts}/${rule.constraints.maxAttempts} 次，等待界面确认）",
+                )
+                scheduleVerifyScan(current)
                 return
             } else {
                 SplashLog.warn("执行失败：${rule.id} / ${rule.action}")
@@ -843,6 +939,20 @@ class SplashAccessibilityService : AccessibilityService() {
                 }
             }
         }
+
+        // 所有匹配规则都用完尝试次数、控件仍在：结束，避免空扫到窗口超时。
+        if (hits.all { current.attempts >= it.rule.constraints.maxAttempts }) {
+            endSession("max_attempts")
+        }
+    }
+
+    /** 点击后补一次扫描，避免没有内容变化事件时验证迟迟不执行。 */
+    private fun scheduleVerifyScan(target: Session) {
+        mainHandler.postDelayed({
+            if (!destroyed && session === target && target.pendingVerify) {
+                performScan()
+            }
+        }, POST_CLICK_VERIFY_MS + 100L)
     }
 
     /**
@@ -915,6 +1025,13 @@ class SplashAccessibilityService : AccessibilityService() {
             )
             return false
         }
+        if (safetyGate.isDeniedText(node.text?.toString()) ||
+            safetyGate.isDeniedText(node.contentDescription?.toString()) ||
+            safetyGate.isDeniedId(node.viewIdResourceName)
+        ) {
+            SplashLog.warn("点击失败：节点文字或 id 命中安全拒绝")
+            return false
+        }
 
         if (rule.tapByGesture) {
             return tapNodeCenter(node, rule)
@@ -968,7 +1085,7 @@ class SplashAccessibilityService : AccessibilityService() {
         val (width, height) = screenSize()
         val fresh = matcher.findBest(tree, rule, pkg, width, height)
         if (fresh == null) {
-            SplashLog.warn("点击失败：当前界面已无匹配控件")
+            logFreshScanMiss(tree, rule, pkg, width, height, direct != null)
             return null
         }
         val node = resolveByPath(root, fresh.clickNode.path)
@@ -977,6 +1094,46 @@ class SplashAccessibilityService : AccessibilityService() {
             return null
         }
         return node
+    }
+
+    /**
+     * 点击时的二次匹配失败后，记录树规模和失败位置：
+     * - 树里没有字面匹配：控件在两次读取之间消失/被替换；
+     * - 有字面匹配但安全门拒绝：节点暂时不可见/禁用或越界；
+     * - 直接路径存在但快照校验失败：文字或 bounds 已变化。
+     */
+    private fun logFreshScanMiss(
+        tree: UiTree,
+        rule: Rule,
+        pkg: String,
+        width: Int,
+        height: Int,
+        directNodeFound: Boolean,
+    ) {
+        var literalMatches = 0
+        var firstRejectReason: String? = null
+        for (index in 0 until tree.size) {
+            val node = tree.node(index)
+            if (!matcher.matchesNode(rule, node)) continue
+            literalMatches++
+            if (firstRejectReason == null) {
+                val gate = safetyGate.evaluate(tree, index, rule, pkg, width, height)
+                if (gate is GateResult.Rejected) firstRejectReason = gate.reason
+            }
+        }
+        val reason = buildString {
+            append("节点 ").append(tree.size)
+            append("，字面匹配 ").append(literalMatches)
+            firstRejectReason?.let { append("，安全门拒绝 ").append(it) }
+            append(
+                if (directNodeFound) {
+                    "，直接定位快照校验失败"
+                } else {
+                    "，直接定位节点不存在"
+                },
+            )
+        }
+        SplashLog.warn("点击失败：当前界面已无匹配控件（$reason）")
     }
 
     private fun looksLikeSkipControl(node: AccessibilityNodeInfo): Boolean {
@@ -1041,8 +1198,14 @@ class SplashAccessibilityService : AccessibilityService() {
 
     /**
      * 快照与当前真实节点必须一致才允许点击。
-     * 纯 viewId 规则不依赖文字，倒计时文字变化不算快照失效；
-     * 依赖文字/描述的规则仍要求文字一致，避免点到另一个控件。
+     *
+     * 手势规则的目标就是规则匹配到的文字节点，因此用当前文字重新跑一遍规则：
+     * 倒计时从“3 跳过”变成“2 跳过”仍允许点击；文字不再满足规则或命中
+     * 下载/安装等拒绝词时拒绝，避免点到被广告替换后的控件。
+     * 非手势规则的点击目标可能是可点击祖先，保留原有的快照文字一致性检查。
+     *
+     * 稳定 viewId 的节点允许少量 bounds 漂移（倒计时宽度变化/重新布局）；
+     * 纯文字规则也允许很小的漂移，但不会接受位置大幅移动的控件。
      */
     private fun verifySnapshot(
         node: AccessibilityNodeInfo,
@@ -1052,14 +1215,34 @@ class SplashAccessibilityService : AccessibilityService() {
         val bounds = snapshot.bounds ?: return false
         val rect = Rect()
         node.getBoundsInScreen(rect)
-        if (rect.left != bounds.left ||
-            rect.top != bounds.top ||
-            rect.right != bounds.right ||
-            rect.bottom != bounds.bottom ||
-            node.viewIdResourceName != snapshot.viewId ||
+        if (node.viewIdResourceName != snapshot.viewId ||
             node.className?.toString() != snapshot.className
         ) {
             return false
+        }
+
+        val exactBounds = rect.left == bounds.left &&
+            rect.top == bounds.top &&
+            rect.right == bounds.right &&
+            rect.bottom == bounds.bottom
+        if (!exactBounds) {
+            val hasStableViewId = !node.viewIdResourceName.isNullOrEmpty()
+            val slackRatio = if (hasStableViewId) 0.35f else 0.15f
+            val current = RectI(rect.left, rect.top, rect.right, rect.bottom)
+            if (!Bounds.near(current, bounds, SNAPSHOT_BOUNDS_SLACK_PX, slackRatio)) {
+                return false
+            }
+        }
+
+        if (rule.tapByGesture) {
+            return matcher.matchesValues(
+                match = rule.match,
+                text = node.text?.toString(),
+                contentDescription = node.contentDescription?.toString(),
+                viewId = node.viewIdResourceName,
+                className = node.className?.toString(),
+                clickable = node.isClickable,
+            )
         }
 
         val ruleUsesText = rule.match.textRegex != null || rule.match.texts.isNotEmpty()
@@ -1108,7 +1291,10 @@ class SplashAccessibilityService : AccessibilityService() {
         )
         const val TIMEOUT_GRACE_MS = 250L
         const val SAME_PACKAGE_RESTART_COOLDOWN_MS = 1_000L
+        /** 点击后等待广告真正关闭的时间；期间保持扫描，不重复点击。 */
+        const val POST_CLICK_VERIFY_MS = 600L
         const val GESTURE_TAP_DURATION_MS = 60L
+        const val SNAPSHOT_BOUNDS_SLACK_PX = 24
         const val MAX_DIAGNOSTIC_CANDIDATES = 4
 
         const val PROBE_WINDOW_MS = 10_000L

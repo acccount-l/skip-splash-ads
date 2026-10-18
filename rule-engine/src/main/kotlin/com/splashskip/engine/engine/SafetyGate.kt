@@ -100,13 +100,14 @@ class SafetyGate(
     private fun resolveClickable(tree: UiTree, start: Int): Int? =
         tree.findClickableAncestor(start)
 
-    private fun isDeniedText(text: String?): Boolean {
+    /** 点击前用当前节点文字再查一次，防止倒计时/文案变化后命中下载、支付等语义。 */
+    fun isDeniedText(text: String?): Boolean {
         val value = text?.trim().orEmpty()
         if (value.isEmpty()) return false
         return denyKeywords.any { value.contains(it, ignoreCase = true) }
     }
 
-    private fun isDeniedId(viewId: String?): Boolean {
+    fun isDeniedId(viewId: String?): Boolean {
         val value = viewId ?: return false
         return denyIdRegex.containsMatchIn(value)
     }
