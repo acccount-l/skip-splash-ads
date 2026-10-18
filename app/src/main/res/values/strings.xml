@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">开屏跳过</string>
+    <string name="accessibility_service_label">开屏跳过</string>
+    <string name="accessibility_service_summary">目标 App 启动后识别“跳过/关闭”控件；可选全探测模式只记录不点击</string>
+    <string name="accessibility_description">规则模式下只读取目标应用启动后短时间内的“跳过/关闭”控件，用于自动跳过开屏广告。开启“全探测模式”后，会短时间读取任意前台应用的界面，但只在本机日志记录“跳过/关闭广告”类短文本，绝不点击，也不会读取、保存或上传聊天、支付、账号等其他内容。应用本身没有网络权限。</string>
+</resources>

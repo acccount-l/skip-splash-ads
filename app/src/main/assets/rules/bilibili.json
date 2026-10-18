@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "packageName": "tv.danmaku.bili",
+  "rules": [
+    {
+      "id": "bilibili_splash_skip",
+      "enabled": true,
+      "activityIds": [
+        "tv.danmaku.bili.splash.ad.page.HotSplashActivity",
+        "tv.danmaku.bili.MainActivityV2"
+      ],
+      "match": {
+        "textRegex": "^跳过\\s*\\d*$",
+        "texts": ["跳过", "Skip"],
+        "className": "android.widget.TextView",
+        "clickable": true,
+        "allowedBounds": [0.70, 0.80, 1.0, 1.0]
+      },
+      "action": "CLICK",
+      "constraints": {
+        "withinMsAfterLaunch": 8000,
+        "cooldownMs": 2000,
+        "maxAttempts": 1,
+        "dryRun": false
+      }
+    }
+  ]
+}

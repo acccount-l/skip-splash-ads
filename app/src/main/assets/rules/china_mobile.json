@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "packageName": "com.greenpoint.android.mc10086.activity",
+  "rules": [
+    {
+      "id": "china_mobile_splash_id_probe",
+      "enabled": true,
+      "activityIds": [
+        "com.mc10086.cmcc.base.StartPageActivity",
+        "com.mc10086.cmcc.base.WelcomeActivity"
+      ],
+      "match": {
+        "viewIdRegex": "(?i).*:id/(video_time_skip|ad_skip_button|ad_skip_text|skip_tv|tv_skip|skip_btn|ms_skipView|ksad_skip_view_skip|sdm_myoffer_splash_skip(_area)?)$",
+        "textRegex": "(?i)^\\s*(\\d{1,2}\\s*[sS秒]?\\s*)?(跳过|skip)(\\s*广告)?\\s*[|·]?\\s*\\d{0,2}\\s*[sS秒]?\\s*$",
+        "clickable": false,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.4
+        ]
+      },
+      "action": "CLICK",
+      "tapByGesture": true,
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    },
+    {
+      "id": "china_mobile_splash_text_probe",
+      "enabled": true,
+      "activityIds": [
+        "com.mc10086.cmcc.base.StartPageActivity",
+        "com.mc10086.cmcc.base.WelcomeActivity"
+      ],
+      "match": {
+        "textRegex": "(?i)^(点击)?\\s*(\\d{1,2}\\s*[sS秒]?\\s*)?(跳过|skip)(\\s*(广告|ad))?\\s*[|·]?\\s*\\d{0,2}\\s*[sS秒]?$",
+        "texts": [
+          "跳过",
+          "跳过广告",
+          "Skip"
+        ],
+        "clickable": false,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.4
+        ]
+      },
+      "action": "CLICK",
+      "tapByGesture": true,
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    },
+    {
+      "id": "china_mobile_splash_desc_probe",
+      "enabled": true,
+      "activityIds": [
+        "com.mc10086.cmcc.base.StartPageActivity",
+        "com.mc10086.cmcc.base.WelcomeActivity"
+      ],
+      "match": {
+        "contentDescriptionRegex": "(?i)^(点击)?\\s*(跳过|skip|关闭广告|close)(\\s*广告)?\\s*[|·]?\\s*\\d*\\s*[sS秒]?$",
+        "clickable": false,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.4
+        ]
+      },
+      "action": "CLICK",
+      "tapByGesture": true,
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    },
+    {
+      "id": "china_mobile_splash_countdown_probe",
+      "enabled": true,
+      "activityIds": [
+        "com.mc10086.cmcc.base.StartPageActivity",
+        "com.mc10086.cmcc.base.WelcomeActivity"
+      ],
+      "match": {
+        "viewIdRegex": "(?i).*:id/(video_time_skip|ad_skip_button|ad_skip_text|skip_tv|tv_skip|skip_btn|ms_skipView|ksad_skip_view_skip|sdm_myoffer_splash_skip(_area)?)$",
+        "textRegex": "^\\s*\\d{1,2}\\s*[sS秒]?\\s*$",
+        "clickable": false,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.4
+        ]
+      },
+      "action": "CLICK",
+      "tapByGesture": true,
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    }
+  ]
+}

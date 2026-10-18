@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "packageName": "com.cainiao.wireless",
+  "rules": [
+    {
+      "id": "cainiao_splash_id_gesture",
+      "enabled": true,
+      "activityIds": [
+        "com.cainiao.wireless.homepage.view.activity.WelcomeActivity",
+        "com.cainiao.wireless.homepage.view.activity.AdsActivity"
+      ],
+      "match": {
+        "viewIdRegex": "(?i).*:id/homesplash_close_fullscreen$",
+        "textRegex": "(?i)^(点击)?\\s*(\\d{1,2}\\s*[sS秒]?\\s*[|·]?\\s*)?(跳过|skip)(\\s*(广告|ad))?\\s*[|·]?\\s*\\d{0,2}\\s*[sS秒]?$",
+        "clickable": true,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.2
+        ]
+      },
+      "action": "CLICK",
+      "tapByGesture": true,
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    },
+    {
+      "id": "cainiao_splash_id_click",
+      "enabled": true,
+      "activityIds": [
+        "com.cainiao.wireless.homepage.view.activity.WelcomeActivity",
+        "com.cainiao.wireless.homepage.view.activity.AdsActivity"
+      ],
+      "match": {
+        "viewIdRegex": "(?i).*:id/homesplash_close_fullscreen$",
+        "clickable": true,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.2
+        ]
+      },
+      "action": "CLICK",
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    },
+    {
+      "id": "cainiao_splash_text",
+      "enabled": true,
+      "activityIds": [
+        "com.cainiao.wireless.homepage.view.activity.WelcomeActivity",
+        "com.cainiao.wireless.homepage.view.activity.AdsActivity"
+      ],
+      "match": {
+        "textRegex": "(?i)^(点击)?\\s*(\\d{1,2}\\s*[sS秒]?\\s*[|·]?\\s*)?(跳过|skip)(\\s*(广告|ad))?\\s*[|·]?\\s*\\d{0,2}\\s*[sS秒]?$",
+        "texts": [
+          "跳过",
+          "Skip"
+        ],
+        "clickable": false,
+        "allowedBounds": [
+          0.5,
+          0.0,
+          1.0,
+          0.2
+        ]
+      },
+      "action": "CLICK",
+      "tapByGesture": true,
+      "constraints": {
+        "withinMsAfterLaunch": 10000,
+        "cooldownMs": 100,
+        "maxAttempts": 3,
+        "dryRun": false
+      }
+    }
+  ]
+}
