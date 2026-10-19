@@ -7,16 +7,16 @@ plugins {
 }
 
 android {
-    namespace = "com.splashskip.app"
+    namespace = "com.example.nodedemo"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        applicationId = "com.splashskip.app"
+        applicationId = "com.example.nodedemo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "1.0.0"
+        versionCode = 1
+        versionName = "0.1.0"
     }
 
     buildTypes {
@@ -52,7 +52,12 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":rule-engine"))
+    implementation(project(":accessibility-core"))
+
+    // androidx.savedstate 的传递依赖；固定到本地依赖缓存中的版本，避免离线构建解析失败。
+    constraints {
+        implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.9.0")
+    }
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -63,7 +68,6 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.serialization.json)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 

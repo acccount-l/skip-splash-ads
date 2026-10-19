@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">开屏跳过</string>
-    <string name="accessibility_service_label">开屏跳过</string>
-    <string name="accessibility_service_summary">目标 App 启动后识别“跳过/关闭”控件；可选全探测模式只记录不点击</string>
-    <string name="accessibility_description">规则模式下只读取目标应用启动后短时间内的“跳过/关闭”控件，用于自动跳过开屏广告。开启“全探测模式”后，会短时间读取任意前台应用的界面，但只在本机日志记录“跳过/关闭广告”类短文本，绝不点击，也不会读取、保存或上传聊天、支付、账号等其他内容。应用本身没有网络权限。</string>
+    <string name="app_name">节点演示</string>
+    <string name="accessibility_service_label">节点演示</string>
+    <string name="accessibility_service_summary">仅在本应用演示页读取界面节点；用户显式触发后执行一次点击演示，不读取其他应用。</string>
+    <string name="accessibility_description">本服务用于演示 Android 无障碍节点树读取、边界校验与点击/手势派发。事件过滤仅限本应用包名；不会读取或操作其他应用。所有动作均由用户在应用内显式触发，且只作用于自带演示页。日志仅保存在本机私有目录，不联网。</string>
+
+    <string name="demo_page_title">演示页</string>
+    <string name="demo_page_description">本页仅用于演示；服务只读取本应用页面，且只在你显式开启一次演示后动作。</string>
+    <string name="demo_target_button">演示目标</string>
+    <string name="demo_status_idle">尚未触发</string>
+    <string name="demo_status_clicked">已点击（演示按钮的 OnClickListener 已执行）</string>
 </resources>

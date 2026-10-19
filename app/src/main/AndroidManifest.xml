@@ -1,39 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!--
-        只用于解析桌面包名：用户回到桌面时结束当前检测窗口。
-        这是包可见性声明，不是权限，也不会读取桌面内容。
-    -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.HOME" />
-        </intent>
-    </queries>
-
     <application
-        android:name=".SplashSkipApp"
+        android:name=".NodeDemoApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SplashSkip"
+        android:theme="@style/Theme.NodeDemo"
         android:usesCleartextTraffic="false">
 
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.SplashSkip">
+            android:theme="@style/Theme.NodeDemo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.DemoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.NodeDemo" />
+
         <service
-            android:name=".service.SplashAccessibilityService"
+            android:name=".service.NodeDemoAccessibilityService"
             android:exported="true"
             android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

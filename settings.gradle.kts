@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SplashSkip"
+rootProject.name = "NodeDemo"
 include(":app")
-include(":rule-engine")
+include(":accessibility-core")
